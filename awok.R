@@ -45,10 +45,6 @@ pheno$ptid2[pheno$group=="Type 2 MI"]<-sample(1:length(pheno$ptid2[pheno$group==
 
 metab0<-metab
 pheno0<-pheno
-# boot<-sample(1:nrow(metab),replace=TRUE)
-# randSub<-sample(1:ncol(metab),size=floor(ncol(metab)/3))
-# metab<-metab[boot,randSub]
-# pheno<-pheno[boot,]
 
 ############ Population class ############
 cl<-makeCluster(2)
