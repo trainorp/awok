@@ -79,7 +79,7 @@ cost<-function(x)
           train<-cv2$samp[cv2$fold!=i]
           test<-cv2$samp[cv2$fold==i]
           
-          pred1<-log(predict(multinom(pheno~.,data=metab2[train,],
+          pred1<-log(predict(multinom(pheno~.+.^2,data=metab2[train,],
                                       MaxNWts=10000,maxit=40,reltol=.0001,trace=FALSE),
                              newdata=metab2[test,],type="probs"))
           pred1[is.infinite(pred1)]<-log(1e-200)
