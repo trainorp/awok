@@ -62,10 +62,10 @@ bfe$elim<-""
 for(i in 1:nrow(bfe)){
   set.seed(i)
   cvF1<-cvFolds(n=nrow(metab1),K=10,R=10)
-  rfp<-data.frame()
   
   # Repeats for repeated K-fold CV:
-  for(j in 1:cvF1$R){
+  rfp<-foreach(j=1:cvF1$R, .combine="rbind",.packages="randomForest") %dopar% {
+    rfp<-data.frame()
     # K-folds:
     for(k in 1:cvF1$K){
       cvF1Df<-data.frame(ind=cvF1$subsets[,j],fold=cvF1$which)
@@ -76,7 +76,9 @@ for(i in 1:nrow(bfe)){
       rf1p$ptid<-rownames(rf1p)
       rfp<-rbind(rfp,rf1p)
     }
+    rfp
   }
+  
   rfp$group<-metab1$group[match(rfp$ptid,rownames(metab1))]
   rfp$ptid<-NULL
   rfp$loss<--log2(
