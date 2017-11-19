@@ -1,4 +1,5 @@
 ############ Prereqs ############
+ptm<-proc.time()
 options(stringsAsFactors=FALSE)
 library(randomForest)
 library(e1071)
@@ -7,9 +8,9 @@ library(cvTools)
 library(dplyr)
 library(doParallel)
 
-oldPar<-par()
+# oldPar<-par()
 
-setwd("~/gdrive/AthroMetab/Data")
+# setwd("~/gdrive/AthroMetab/Data")
 spec<-read.csv("AthroACSRawSpectra.csv")
 key<-read.csv("metabolite_key2.csv")
 key[grepl("X - ",key$biochemical),]$biochemical<-key[grepl("X - ",key$biochemical),]$Unknown.Name
@@ -47,7 +48,7 @@ pheno$ptid2[pheno$group=="Type 2 MI"]<-sample(1:length(pheno$ptid2[pheno$group==
 metab<-cbind(group=pheno$group,metab)
 metab$group<-factor(make.names(metab$group))
 
-setwd("~/gdrive/AthroMetab/WoAC")
+# setwd("~/gdrive/AthroMetab/WoAC")
 
 ########### Random Forest importance ###########
 cl<-makeCluster(10)
@@ -90,3 +91,7 @@ for(i in 1:nrow(bfe)){
   print(i)
 }
 
+print(proc.time()-ptm)
+stopCluster(cl)
+
+save.image(file="compare.RData")
