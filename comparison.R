@@ -1,10 +1,13 @@
 ############ Prereqs ############
 options(stringsAsFactors=FALSE)
 library(randomForest)
+library(e1071)
+library(caret)
 library(nnet)
 library(cvTools)
 library(dplyr)
 library(tidyr)
+library(ggplot2)
 
 oldPar<-par()
 
@@ -24,7 +27,6 @@ key$peakMZ<-unlist(lapply(lapply(key$spectra,getMZ),function(x) ifelse(is.null(x
 
 options(stringsAsFactors=FALSE)
 
-
 ############ Import ############
 metab<-read.csv("scaled.csv")
 pheno<-metab %>% filter(timepoint=="T0") %>% select(ptid,group)
@@ -42,3 +44,13 @@ set.seed(2)
 pheno$ptid2[pheno$group=="Type 1 MI"]<-sample(1:length(pheno$ptid2[pheno$group=="Type 1 MI"]))
 set.seed(3)
 pheno$ptid2[pheno$group=="Type 2 MI"]<-sample(1:length(pheno$ptid2[pheno$group=="Type 2 MI"]))
+
+# Add phenotype back:
+metab<-cbind(group=pheno$group,metab)
+metab$group<-factor(make.names(metab$group))
+
+setwd("~/gdrive/AthroMetab/WoAC")
+
+########### Random Forest importance ###########
+rf1<-randomForest(group~.,data=metab,ntree=1000,importance=TRUE)
+imp1<-importance(rf1)
