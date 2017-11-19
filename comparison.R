@@ -2,12 +2,10 @@
 options(stringsAsFactors=FALSE)
 library(randomForest)
 library(e1071)
-library(caret)
 library(nnet)
 library(cvTools)
 library(dplyr)
-library(tidyr)
-library(ggplot2)
+library(doParallel)
 
 oldPar<-par()
 
@@ -52,13 +50,43 @@ metab$group<-factor(make.names(metab$group))
 setwd("~/gdrive/AthroMetab/WoAC")
 
 ########### Random Forest importance ###########
-bfe<-data.frame(iter=1:(ncol(metab)-1))
+cl<-makeCluster(10)
+registerDoParallel(cl)
 
-for(i in nrow(bfe)){
+metab1<-metab
+bfe<-data.frame(iter=1:(ncol(metab1)-1))
+bfe$err<-NA
+bfe$elim<-""
+
+for(i in 1:nrow(bfe)){
   set.seed(i)
-  cvF1<-cvFolds(n=nrow(metab),K=10,R=10)
-  # LOH
-  rf1<-randomForest(group~.,data=metab,ntree=1000,importance=TRUE)
-  imp1<-importance(rf1)
+  cvF1<-cvFolds(n=nrow(metab1),K=10,R=10)
+  rfp<-data.frame()
+  
+  # Repeats for repeated K-fold CV:
+  for(j in 1:cvF1$R){
+    # K-folds:
+    for(k in 1:cvF1$K){
+      cvF1Df<-data.frame(ind=cvF1$subsets[,j],fold=cvF1$which)
+      rf1<-randomForest(group~.,data=metab1[cvF1Df$ind[cvF1Df$fold!=k],],
+                        ntree=500,importance=TRUE)
+      rf1p<-predict(rf1,newdata=metab1[cvF1Df$ind[cvF1Df$fold==k],],type="prob")
+      rf1p<-as.data.frame(rf1p)
+      rf1p$ptid<-rownames(rf1p)
+      rfp<-rbind(rfp,rf1p)
+    }
+  }
+  rfp$group<-metab1$group[match(rfp$ptid,rownames(metab1))]
+  rfp$ptid<-NULL
+  rfp$loss<--log2(
+    as.numeric(as.matrix(rfp)[1:nrow(rfp) + nrow(rfp) * (match(rfp$group,colnames(rfp)) - 1)]))
+  bfe$err[i]<-mean(rfp$loss)
+  
+  rf1<-randomForest(group~.,data=metab1,ntree=1000,importance=TRUE)
+  imp1<-as.data.frame(importance(rf1))
+  imp1$metab1<-rownames(imp1)
+  metab1<-metab1[,names(metab1)!=imp1$metab1[which.min(imp1$MeanDecreaseAccuracy)]]
+  bfe$elim[i]<-imp1$metab1[which.min(imp1$MeanDecreaseAccuracy)]
+  print(i)
 }
 
