@@ -52,5 +52,13 @@ metab$group<-factor(make.names(metab$group))
 setwd("~/gdrive/AthroMetab/WoAC")
 
 ########### Random Forest importance ###########
-rf1<-randomForest(group~.,data=metab,ntree=1000,importance=TRUE)
-imp1<-importance(rf1)
+bfe<-data.frame(iter=1:(ncol(metab)-1))
+
+for(i in nrow(bfe)){
+  set.seed(i)
+  cvF1<-cvFolds(n=nrow(metab),K=10,R=10)
+  # LOH
+  rf1<-randomForest(group~.,data=metab,ntree=1000,importance=TRUE)
+  imp1<-importance(rf1)
+}
+
