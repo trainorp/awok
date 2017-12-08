@@ -117,17 +117,18 @@ p1<-ggplot(bfe %>% filter(is.finite(err)),aes(x=iter,y=err))+geom_line()+theme_b
 ########### Lasso / Elastic net ###########
 # List of elastic nets:
 tGLMlist<-list()
-for(alpha in seq(.1,1,.1)){
+for(alpha in seq(.5,1,.1)){
   tGLM<-glmnet(x=as.matrix(metab[,names(metab)!="group"]),alpha=alpha,
-               y=metab[,"group"],family="multinomial",lambda=10**(-seq(0.44,6,.02)))
+               y=metab[,"group"],family="multinomial",lambda=10**(-seq(0.3,6,.02)))
   tGLMlist[[as.character(alpha)]]<-tGLM
 }
 # CV version:
 tGLMcvlist<-list()
-for(alpha in seq(.1,1,.1)){
+for(alpha in seq(.5,1,.1)){
   tGLMcv<-cv.glmnet(x=as.matrix(metab[,names(metab)!="group"]),alpha=alpha,
-               y=metab[,"group"],family="multinomial",lambda=10**(-seq(0.44,6,.02)),
-               type.measure="deviance")
+               y=metab[,"group"],family="multinomial",lambda=10**(-seq(0.3,6,.02)),
+               type.measure="deviance",nfolds=10)
+  tGLMcv$cvm
   tGLMcvlist[[as.character(alpha)]]<-tGLMcv
 }
 
@@ -149,39 +150,28 @@ tGLMdfLong<-tGLMdf %>% gather(key="Measure",value="value",-lambda)
 p2<-ggplot(tGLMdfLong %>% filter(!is.na(value)),aes(x=lambda,y=value,color=Measure))+geom_line()+theme_bw()+
   xlab(expression(lambda))+ylab("Value")+
   scale_color_manual(values=c("darkred","navyblue"),
-    labels=c("L1 Norm","Features (metabolites)\nselected"))
+    labels=c(expression(paste(L[1]," Norm")),"Features (metabolites) selected"))+
+  ggtitle(expression(paste("(C) Norm and selection over ",lambda," path")))+
+  theme(legend.text.align = 0)
 
 GLMerr<-data.frame(lambda=tGLMcv$lambda,err=log2(exp(tGLMcv$cvm))/2)
 tGLMdf<-tGLMdf %>% full_join(GLMerr)
 p3<-ggplot(tGLMdf ,aes(x=metabs,y=err))+geom_line()+theme_bw()+
-  xlab("Features (metabolites) selected")+ylab("Cross-entropy error (Repeated 10-fold CV)")
+  xlab("Features (metabolites) selected")+ylab("Cross-entropy error")+
+  ggtitle("(B) Error versus # features")
 p4<-ggplot(tGLMdf,aes(x=lambda,y=err))+geom_line()+theme_bw()+
-  xlab(expression(lambda))+ylab("Cross-entropy error (Repeated 10-fold CV)")
+  xlab(expression(lambda))+ylab("Cross-entropy error")+
+  ggtitle(expression(paste("(A) Error over ",lambda," path")))
 
-grid.arrange(p1,p2,p3,p4, ncol = 2, nrow = 2)
-# Check
-tGLMcv<-tGLMcvlist$`0.9`
-set.seed(3)
-cvF1<-cvFolds(n=nrow(metab),K=10,R=10)
-elasticp<-foreach(j=1:cvF1$R, .combine="rbind",.packages="glmnet") %dopar% {
-  elasticp<-data.frame()
-  # K-folds:
-  for(k in 1:cvF1$K){
-    cvF1Df<-data.frame(ind=cvF1$subsets[,j],fold=cvF1$which)
-    elastic1<-glmnet(x=as.matrix(metab[cvF1Df$ind[cvF1Df$fold!=k],names(metab)!="group"]),
-                y=metab[cvF1Df$ind[cvF1Df$fold!=k],"group"],alpha=.9,
-                family="multinomial",lambda=.2)
-    elastic1p<-predict(elastic1,newx=as.matrix(metab[cvF1Df$ind[cvF1Df$fold==k],names(metab)!="group"]),
-                  type="response")
-    elastic1p<-as.data.frame(elastic1p)
-    elastic1p$ptid<-rownames(elastic1p)
-    elasticp<-rbind(elasticp,elastic1p)
-  }
-  elasticp
-}
-elasticp$group<-metab$group[match(elasticp$ptid,rownames(metab))]
-elasticp$ptid<-NULL
-colnames(elasticp)<-gsub(".s0","",colnames(elasticp))
-elasticp$loss<--log(
-  as.numeric(as.matrix(elasticp)[1:nrow(elasticp) + nrow(elasticp) * (match(elasticp$group,colnames(elasticp)) - 1)]))
-mean(elasticp$loss)
+lm1<-matrix(c(3,3,3,3,3,3,3,2,2,2,2,2,2,2,NA,1,1,1,1,1,1,1,1,1,1,1,1,NA),nrow=2,byrow=TRUE)
+png(file="elasticNet.png",height=5,width=6,units="in",res=600)
+grid.arrange(p2,p3,p4,layout_matrix=lm1)
+dev.off()
+
+# As variable selection:
+eNetLambdas<-sapply(tGLMcvlist,FUN=function(x) x$lambda.min)
+eNetMins<-sapply(tGLMcvlist,FUN=function(x) min(x$cvm))
+eNet<-coef(tGLMcvlist,s=eNetMin)
+tGLMcoef<-cbind(as.matrix(tGLMcoef$sCAD),as.matrix(tGLMcoef$Type.1.MI),
+                as.matrix(tGLMcoef$Type.2.MI))
+
