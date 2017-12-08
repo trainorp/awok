@@ -192,4 +192,39 @@ idk<-tGLMlist[[1]]
 idk$nMetabDf
 
 ############ Model building ############
+which1<-which(eNet$nMetabDf$metabs==5)
+which1<-which1[length(which1)]
+vars<-eNet$varList[[which1]][-1]
+form1<-as.formula(paste("group",paste(vars,collapse="+"),sep="~"))
 
+cv1<-cvFolds(nrow(metab),K=nrow(metab))
+cv2<-data.frame(samp=cv1$subsets,fold=cv1$which)
+
+mis2<-list()
+for(i in 1:nrow(cv2)){
+  train<-cv2$samp[cv2$fold!=i]
+  test<-cv2$samp[cv2$fold==i]
+  
+  # Multinomial logit:
+  modMult<-multinom(form1,data=metab[train,],
+                    MaxNWts=10000,maxit=40,reltol=.0001,trace=FALSE)
+  predMult<-log(predict(modMult,newdata=metab[test,],type="probs"))
+  predMult[is.infinite(predMult)]<-log(1e-200)
+  mm1<-model.matrix(~-1+metab[test,]$group)
+  mis2$multinom$mis<-c(mis2$multinom$mis,
+                       as.numeric(!predict(modMult,newdata=metab[test,],"class")==metab$group[test]))
+  mis2$multinom$ce<-c(mis2$multinom$ce,-1/nrow(mm1)*sum(mm1*predMult))
+  
+  # Elastic net:
+  
+  
+  # Random forest:
+  modRF<-randomForest(form1,data=metab[train,],ntree=1000)
+  predRF<-log(predict(modRF,newdata=metab[test,],type="prob"))
+  predRF[is.infinite(predRF)]<-log(1e-200)
+  mis2$RF$mis<-c(mis2$RF$mis,
+                 as.numeric(!predict(modRF,newdata=metab[test,],"class")==metab$group[test]))
+  mis2$RF$ce<-c(mis2$RF$ce,-1/nrow(mm1)*sum(mm1*predRF))
+  
+}
+lapply(mis2,function(x) lapply(x,mean))
