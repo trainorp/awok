@@ -188,8 +188,7 @@ grid.arrange(p2,p3,p4,layout_matrix=lm1)
 # dev.off()
 
 # As variable selection:
-idk<-tGLMlist[[1]]
-idk$nMetabDf
+eNet<-tGLMlist[["0.9"]]
 
 ############ Model building ############
 which1<-which(eNet$nMetabDf$metabs==3)
