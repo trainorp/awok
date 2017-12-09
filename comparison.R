@@ -188,11 +188,10 @@ grid.arrange(p2,p3,p4,layout_matrix=lm1)
 # dev.off()
 
 # As variable selection:
-idk<-tGLMlist[[1]]
-idk$nMetabDf
+eNet<-tGLMlist[["0.9"]]
 
 ############ Model building ############
-which1<-which(eNet$nMetabDf$metabs==5)
+which1<-which(eNet$nMetabDf$metabs==3)
 which1<-which1[length(which1)]
 vars<-eNet$varList[[which1]][-1]
 form1<-as.formula(paste("group",paste(vars,collapse="+"),sep="~"))
@@ -209,22 +208,32 @@ for(i in 1:nrow(cv2)){
   modMult<-multinom(form1,data=metab[train,],
                     MaxNWts=10000,maxit=40,reltol=.0001,trace=FALSE)
   predMult<-log(predict(modMult,newdata=metab[test,],type="probs"))
-  predMult[is.infinite(predMult)]<-log(1e-200)
+  predMult[is.infinite(predMult)]<-log(1e-20)
   mm1<-model.matrix(~-1+metab[test,]$group)
-  mis2$multinom$mis<-c(mis2$multinom$mis,
+  mis2$mis$multinom<-c(mis2$mis$multinom,
                        as.numeric(!predict(modMult,newdata=metab[test,],"class")==metab$group[test]))
-  mis2$multinom$ce<-c(mis2$multinom$ce,-1/nrow(mm1)*sum(mm1*predMult))
+  mis2$ce$multinom<-c(mis2$ce$multinom,-1/nrow(mm1)*sum(mm1*predMult))
   
   # Elastic net:
-  
+  tGLMcv<-cv.glmnet(x=as.matrix(metab[train,vars]),alpha=.9,
+                    y=metab[train,"group"],family="multinomial",lambda=10**(-seq(0.2,6,.005)),
+                    type.measure="deviance",nfolds=10)
+  tGLM<-glmnet(x=as.matrix(metab[train,vars]),y=metab[train,"group"],alpha=.9,
+               family="multinomial",lambda=tGLMcv$lambda.min)
+  predGLM<-log(predict(tGLM,newx=as.matrix(metab[test,vars]),type="response")[,,1])
+  predGLM[is.infinite(predGLM)]<-log(1e-20)
+  mis2$mis$GLM<-c(mis2$mis$GLM,
+        as.numeric(!levels(metab$group)[which.max(predict(tGLM,newx=as.matrix(metab[test,vars],type="class")))]==
+                     metab$group[test]))
+  mis2$ce$GLM<-c(mis2$ce$GLM,-1/nrow(mm1)*sum(mm1*predGLM))
   
   # Random forest:
   modRF<-randomForest(form1,data=metab[train,],ntree=1000)
   predRF<-log(predict(modRF,newdata=metab[test,],type="prob"))
-  predRF[is.infinite(predRF)]<-log(1e-200)
-  mis2$RF$mis<-c(mis2$RF$mis,
+  predRF[is.infinite(predRF)]<-log(1e-20)
+  mis2$mis$RF<-c(mis2$mis$RF,
                  as.numeric(!predict(modRF,newdata=metab[test,],"class")==metab$group[test]))
-  mis2$RF$ce<-c(mis2$RF$ce,-1/nrow(mm1)*sum(mm1*predRF))
-  
+  mis2$ce$RF<-c(mis2$ce$RF,-1/nrow(mm1)*sum(mm1*predRF))
+  print(i)
 }
 lapply(mis2,function(x) lapply(x,mean))
