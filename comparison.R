@@ -14,8 +14,6 @@ library(gridExtra)
 
 oldPar<-par()
 
-setwd("~/gdrive/AthroMetab/WoAC")
-
 ## Do not run:
 setwd("~/gdrive/AthroMetab/Data")
 spec<-read.csv("AthroACSRawSpectra.csv")
@@ -55,12 +53,13 @@ pheno$ptid2[pheno$group=="Type 2 MI"]<-sample(1:length(pheno$ptid2[pheno$group==
 metab<-cbind(group=pheno$group,metab)
 metab$group<-factor(make.names(metab$group))
 
-setwd("~/gdrive/AthroMetab/WoAC")
-
 ########### Random Forest importance ###########
 # cl<-makeCluster(10)
 # registerDoParallel(cl)
 
+rF0<-randomForest(group~.,data=metab,ntree=10000,importance=TRUE)
+
+## BFE:
 metab1<-metab
 bfe<-data.frame(iter=1:(ncol(metab1)-1))
 bfe$err<-NA
@@ -102,11 +101,6 @@ for(i in 1:nrow(bfe)){
 
 # print(proc.time()-ptm)
 # stopCluster(cl)
-
-save.image(file="compare.RData")
-
-## End do not run:
-load(file="compare.RData")
 
 # RF plot:
 plot(bfe$iter,bfe$err,type="l")
@@ -204,6 +198,37 @@ key<-key %>% arrange(as.numeric(gsub("M","",id)))
 weights<-apply(weights,1,function(x) mean(x))
 key$weights<-0
 key$weights[match(names(weights),key$id)]<-weights
+
+save.image(file="compare.RData")
+
+## End do not run:
+setwd("~/gdrive/AthroMetab/WoAC")
+load(file="compare.RData")
+
+############ Selection ############
+selDf<-key[,names(key)%in%c("id","biochemical")]
+
+# RF importance:
+rF0Imp<-as.data.frame(importance(rF0,type="1"))
+rF0Imp$id<-rownames(rF0Imp)
+names(rF0Imp)[names(rF0Imp)=="MeanDecreaseAccuracy"]<-"rFImp"
+
+# RF-BFE importance:
+rFBFE<-bfe
+rFBFE<-rFBFE %>% arrange(desc(iter))
+rFBFE$rFBFEImp<-1:max(rFBFE$iter)
+rFBFE<-rFBFE %>% select(elim,rFBFEImp)
+names(rFBFE)[names(rFBFE)=="elim"]<-"id"
+
+# WoAC importance:
+WoACImp<-key %>% select(id,weights)
+WoACImp %>% arrange(desc(weights))
+weightImp<-data.frame(value=unique(WoACImp$weights))
+weightImp<-weightImp %>% arrange(desc(value))
+weightImp$WoACImp<-1:nrow(weightImp)
+WoACImp<-WoACImp %>% left_join(weightImp,by=c("weights"="value"))
+
+selDf<-selDf %>% left_join(rF0Imp) %>% left_join(rFBFE) %>% left_join(WoACImp)
 
 ############ Model building ############
 # As variable selection:
