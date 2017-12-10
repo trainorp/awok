@@ -187,10 +187,29 @@ lm1<-matrix(c(3,3,3,3,3,3,3,2,2,2,2,2,2,2,NA,1,1,1,1,1,1,1,1,1,1,1,1,NA),nrow=2,
 grid.arrange(p2,p3,p4,layout_matrix=lm1)
 # dev.off()
 
-# As variable selection:
-eNet<-tGLMlist[["0.9"]]
+########### WoAC ###########
+load("outs.RData")
+weights<-c()
+for(i in 1:length(outs)){
+  nams<-outs[[i]]$vars
+  experts<-outs[[i]]$pop@varInclude[order(outs[[i]]$pop@cost)[1]]
+  experts<-sapply(experts,as.numeric)
+  rownames(experts)<-nams
+  blanks<-matrix(0,nrow=ncol(metab)-1,ncol=1)
+  rownames(blanks)<-colnames(metab)[colnames(metab)!="group"]
+  blanks[match(rownames(experts),rownames(blanks)),]<-experts
+  weights<-cbind(weights,apply(blanks,1,mean))
+}
+key<-key %>% arrange(as.numeric(gsub("M","",id)))
+weights<-apply(weights,1,function(x) mean(x))
+key$weights<-0
+key$weights[match(names(weights),key$id)]<-weights
 
 ############ Model building ############
+# As variable selection:
+eNet<-tGLMlist[["0.9"]]
+resDf<-expand.grid(nMetab=c(3,5,10,15,20,25),varSelect=c("RF-Imp","RF-BFE","Lasso","ENet"))
+
 which1<-which(eNet$nMetabDf$metabs==3)
 which1<-which1[length(which1)]
 vars<-eNet$varList[[which1]][-1]
