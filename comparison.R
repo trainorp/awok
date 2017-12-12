@@ -241,6 +241,11 @@ selDf$lasso5<-0
 lamb<-min(lasso$nMetabDf$lambda[!is.na(lasso$nMetabDf$metabs) & lasso$nMetabDf$metabs==5])
 selDf$lasso5[selDf$id %in% lasso$varList[which(lasso$nMetabDf$lambda==lamb)][[1]]]<-1
 
+# 7 Metabolite:
+selDf$lasso7<-0
+lamb<-min(lasso$nMetabDf$lambda[!is.na(lasso$nMetabDf$metabs) & lasso$nMetabDf$metabs==7])
+selDf$lasso7[selDf$id %in% lasso$varList[which(lasso$nMetabDf$lambda==lamb)][[1]]]<-1
+
 # 10 Metabolite:
 selDf$lasso10<-0
 lamb<-min(lasso$nMetabDf$lambda[!is.na(lasso$nMetabDf$metabs) & lasso$nMetabDf$metabs==10])
@@ -253,7 +258,7 @@ selDf$lasso15[selDf$id %in% lasso$varList[which(lasso$nMetabDf$lambda==lamb)][[1
 
 ############ Model building ############
 # As variable selection:
-resDf<-expand.grid(nMetab=c(3,5,10,15),varSelect=c("WoACImp","rFImp","rFBFEImp","lasso"),
+resDf<-expand.grid(nMetab=c(3,5,7,10,15),varSelect=c("WoACImp","rFImp","lasso"),
                    stringsAsFactors=FALSE)
 resDf$ceRF<-resDf$ceGLM<-resDf$ceMultinom<-resDf$misRF<-resDf$misGLM<-resDf$misMultinom<-NA
 
@@ -285,10 +290,10 @@ for(j in 1:nrow(resDf)){
     mis2$ceMultinom<-c(mis2$ceMultinom,-1/nrow(mm1)*sum(mm1*predMult))
     
     # Elastic net:
-    tGLMcv<-cv.glmnet(x=as.matrix(metab[train,vars]),alpha=.9,
+    tGLMcv<-cv.glmnet(x=as.matrix(metab[train,vars]),alpha=1,
                       y=metab[train,"group"],family="multinomial",lambda=10**(-seq(0.2,6,.005)),
-                      type.measure="deviance",nfolds=10)
-    tGLM<-glmnet(x=as.matrix(metab[train,vars]),y=metab[train,"group"],alpha=.9,
+                      type.measure="class",nfolds=10)
+    tGLM<-glmnet(x=as.matrix(metab[train,vars]),y=metab[train,"group"],alpha=.5,
                  family="multinomial",lambda=tGLMcv$lambda.min)
     predGLM<-log(predict(tGLM,newx=as.matrix(metab[test,vars]),type="response")[,,1])
     predGLM[is.infinite(predGLM)]<-log(1e-20)
@@ -309,3 +314,4 @@ for(j in 1:nrow(resDf)){
   resDf[j,names(mis3)]<-unlist(mis3)
   print(j)
 }
+write.csv(resDf,file="resDf.csv",row.names=FALSE)
