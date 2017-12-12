@@ -290,10 +290,10 @@ for(j in 1:nrow(resDf)){
     mis2$ceMultinom<-c(mis2$ceMultinom,-1/nrow(mm1)*sum(mm1*predMult))
     
     # Elastic net:
-    tGLMcv<-cv.glmnet(x=as.matrix(metab[train,vars]),alpha=1,
+    tGLMcv<-cv.glmnet(x=as.matrix(metab[train,vars]),alpha=.9,
                       y=metab[train,"group"],family="multinomial",lambda=10**(-seq(0.2,6,.005)),
-                      type.measure="class",nfolds=10)
-    tGLM<-glmnet(x=as.matrix(metab[train,vars]),y=metab[train,"group"],alpha=.5,
+                      type.measure="deviance",nfolds=10)
+    tGLM<-glmnet(x=as.matrix(metab[train,vars]),y=metab[train,"group"],alpha=.9,
                  family="multinomial",lambda=tGLMcv$lambda.min)
     predGLM<-log(predict(tGLM,newx=as.matrix(metab[test,vars]),type="response")[,,1])
     predGLM[is.infinite(predGLM)]<-log(1e-20)
