@@ -113,7 +113,7 @@ p1<-ggplot(bfe %>% filter(is.finite(err)),aes(x=iter,y=err))+geom_line()+theme_b
 tGLMlist<-list()
 for(alpha in seq(.5,1,.1)){
   tGLM<-glmnet(x=as.matrix(metab[,names(metab)!="group"]),alpha=alpha,
-               y=metab[,"group"],family="multinomial",lambda=10**(-seq(0.2,6,.005)))
+               y=metab[,"group"],family="multinomial",lambda=10**(-seq(0.2,6,.001)))
   
   tGLMdf<-data.frame(lambda=tGLM$lambda,metabs=NA,l1Norm=NA)
   varList<-list()
@@ -137,7 +137,7 @@ for(alpha in seq(.5,1,.1)){
 tGLMcvlist<-list()
 for(alpha in seq(.5,1,.1)){
   tGLMcv<-cv.glmnet(x=as.matrix(metab[,names(metab)!="group"]),alpha=alpha,
-               y=metab[,"group"],family="multinomial",lambda=10**(-seq(0.2,6,.005)),
+               y=metab[,"group"],family="multinomial",lambda=10**(-seq(0.2,6,.001)),
                type.measure="deviance",nfolds=10)
   tGLMcvlist[[as.character(alpha)]]<-tGLMcv
 }
@@ -211,7 +211,9 @@ selDf<-key[,names(key)%in%c("id","biochemical")]
 # RF importance:
 rF0Imp<-as.data.frame(importance(rF0,type="1"))
 rF0Imp$id<-rownames(rF0Imp)
-names(rF0Imp)[names(rF0Imp)=="MeanDecreaseAccuracy"]<-"rFImp"
+rF0Imp<-rF0Imp %>% arrange(desc(MeanDecreaseAccuracy))
+rF0Imp$rFImp<-1:nrow(rF0Imp)
+rF0Imp$MeanDecreaseAccuracy<-NULL
 
 # RF-BFE importance:
 rFBFE<-bfe
@@ -222,62 +224,87 @@ names(rFBFE)[names(rFBFE)=="elim"]<-"id"
 
 # WoAC importance:
 WoACImp<-key %>% select(id,weights)
-WoACImp %>% arrange(desc(weights))
-weightImp<-data.frame(value=unique(WoACImp$weights))
-weightImp<-weightImp %>% arrange(desc(value))
-weightImp$WoACImp<-1:nrow(weightImp)
-WoACImp<-WoACImp %>% left_join(weightImp,by=c("weights"="value"))
+WoACImp<-WoACImp %>% arrange(desc(weights))
+WoACImp$WoACImp<-1:nrow(WoACImp)
+WoACImp$weights<-NULL
 
 selDf<-selDf %>% left_join(rF0Imp) %>% left_join(rFBFE) %>% left_join(WoACImp)
+lasso<-tGLMlist[["1"]]
+
+# 3 Metabolite:
+selDf$lasso3<-0
+lamb<-min(lasso$nMetabDf$lambda[!is.na(lasso$nMetabDf$metabs) & lasso$nMetabDf$metabs==3])
+selDf$lasso3[selDf$id %in% lasso$varList[which(lasso$nMetabDf$lambda==lamb)][[1]]]<-1
+
+# 5 Metabolite:
+selDf$lasso5<-0
+lamb<-min(lasso$nMetabDf$lambda[!is.na(lasso$nMetabDf$metabs) & lasso$nMetabDf$metabs==5])
+selDf$lasso5[selDf$id %in% lasso$varList[which(lasso$nMetabDf$lambda==lamb)][[1]]]<-1
+
+# 10 Metabolite:
+selDf$lasso10<-0
+lamb<-min(lasso$nMetabDf$lambda[!is.na(lasso$nMetabDf$metabs) & lasso$nMetabDf$metabs==10])
+selDf$lasso10[selDf$id %in% lasso$varList[which(lasso$nMetabDf$lambda==lamb)][[1]]]<-1
+
+# 15 Metabolite:
+selDf$lasso15<-0
+lamb<-min(lasso$nMetabDf$lambda[!is.na(lasso$nMetabDf$metabs) & lasso$nMetabDf$metabs==15])
+selDf$lasso15[selDf$id %in% lasso$varList[which(lasso$nMetabDf$lambda==lamb)][[1]]]<-1
 
 ############ Model building ############
 # As variable selection:
-eNet<-tGLMlist[["0.9"]]
-resDf<-expand.grid(nMetab=c(3,5,10,15,20,25),varSelect=c("RF-Imp","RF-BFE","Lasso","ENet"))
+resDf<-expand.grid(nMetab=c(3,5,10,15),varSelect=c("WoACImp","rFImp","rFBFEImp","lasso"),
+                   stringsAsFactors=FALSE)
+resDf$ceRF<-resDf$ceGLM<-resDf$ceMultinom<-resDf$misRF<-resDf$misGLM<-resDf$misMultinom<-NA
 
-which1<-which(eNet$nMetabDf$metabs==3)
-which1<-which1[length(which1)]
-vars<-eNet$varList[[which1]][-1]
-form1<-as.formula(paste("group",paste(vars,collapse="+"),sep="~"))
-
-cv1<-cvFolds(nrow(metab),K=nrow(metab))
-cv2<-data.frame(samp=cv1$subsets,fold=cv1$which)
-
-mis2<-list()
-for(i in 1:nrow(cv2)){
-  train<-cv2$samp[cv2$fold!=i]
-  test<-cv2$samp[cv2$fold==i]
+for(j in 1:nrow(resDf)){
+  if(resDf$varSelect[j]!="lasso"){
+    vars<-selDf[match(1:resDf$nMetab[j],selDf[,match(resDf$varSelect[j],names(selDf))]),]$id
+  }else{
+    vars<-selDf$id[as.logical(selDf[,grepl("lasso",names(selDf)) & grepl(resDf$nMetab[j],names(selDf))])]
+  }
+  form1<-as.formula(paste("group",paste(vars,collapse="+"),sep="~"))
   
-  # Multinomial logit:
-  modMult<-multinom(form1,data=metab[train,],
-                    MaxNWts=10000,maxit=40,reltol=.0001,trace=FALSE)
-  predMult<-log(predict(modMult,newdata=metab[test,],type="probs"))
-  predMult[is.infinite(predMult)]<-log(1e-20)
-  mm1<-model.matrix(~-1+metab[test,]$group)
-  mis2$mis$multinom<-c(mis2$mis$multinom,
-                       as.numeric(!predict(modMult,newdata=metab[test,],"class")==metab$group[test]))
-  mis2$ce$multinom<-c(mis2$ce$multinom,-1/nrow(mm1)*sum(mm1*predMult))
+  cv1<-cvFolds(nrow(metab),K=nrow(metab))
+  cv2<-data.frame(samp=cv1$subsets,fold=cv1$which)
   
-  # Elastic net:
-  tGLMcv<-cv.glmnet(x=as.matrix(metab[train,vars]),alpha=.9,
-                    y=metab[train,"group"],family="multinomial",lambda=10**(-seq(0.2,6,.005)),
-                    type.measure="deviance",nfolds=10)
-  tGLM<-glmnet(x=as.matrix(metab[train,vars]),y=metab[train,"group"],alpha=.9,
-               family="multinomial",lambda=tGLMcv$lambda.min)
-  predGLM<-log(predict(tGLM,newx=as.matrix(metab[test,vars]),type="response")[,,1])
-  predGLM[is.infinite(predGLM)]<-log(1e-20)
-  mis2$mis$GLM<-c(mis2$mis$GLM,
-        as.numeric(!levels(metab$group)[which.max(predict(tGLM,newx=as.matrix(metab[test,vars],type="class")))]==
-                     metab$group[test]))
-  mis2$ce$GLM<-c(mis2$ce$GLM,-1/nrow(mm1)*sum(mm1*predGLM))
-  
-  # Random forest:
-  modRF<-randomForest(form1,data=metab[train,],ntree=1000)
-  predRF<-log(predict(modRF,newdata=metab[test,],type="prob"))
-  predRF[is.infinite(predRF)]<-log(1e-20)
-  mis2$mis$RF<-c(mis2$mis$RF,
-                 as.numeric(!predict(modRF,newdata=metab[test,],"class")==metab$group[test]))
-  mis2$ce$RF<-c(mis2$ce$RF,-1/nrow(mm1)*sum(mm1*predRF))
-  print(i)
+  mis2<-c()
+  for(i in 1:nrow(cv2)){
+    train<-cv2$samp[cv2$fold!=i]
+    test<-cv2$samp[cv2$fold==i]
+    
+    # Multinomial logit:
+    modMult<-multinom(form1,data=metab[train,],
+                      MaxNWts=10000,maxit=40,reltol=.0001,trace=FALSE)
+    predMult<-log(predict(modMult,newdata=metab[test,],type="probs"))
+    predMult[is.infinite(predMult)]<-log(1e-20)
+    mm1<-model.matrix(~-1+metab[test,]$group)
+    mis2$misMultinom<-c(mis2$misMultinom,
+                        as.numeric(!predict(modMult,newdata=metab[test,],"class")==metab$group[test]))
+    mis2$ceMultinom<-c(mis2$ceMultinom,-1/nrow(mm1)*sum(mm1*predMult))
+    
+    # Elastic net:
+    tGLMcv<-cv.glmnet(x=as.matrix(metab[train,vars]),alpha=.9,
+                      y=metab[train,"group"],family="multinomial",lambda=10**(-seq(0.2,6,.005)),
+                      type.measure="deviance",nfolds=10)
+    tGLM<-glmnet(x=as.matrix(metab[train,vars]),y=metab[train,"group"],alpha=.9,
+                 family="multinomial",lambda=tGLMcv$lambda.min)
+    predGLM<-log(predict(tGLM,newx=as.matrix(metab[test,vars]),type="response")[,,1])
+    predGLM[is.infinite(predGLM)]<-log(1e-20)
+    mis2$misGLM<-c(mis2$misGLM,
+                   as.numeric(!levels(metab$group)[which.max(predict(tGLM,newx=as.matrix(metab[test,vars],type="class")))]==
+                                metab$group[test]))
+    mis2$ceGLM<-c(mis2$ceGLM,-1/nrow(mm1)*sum(mm1*predGLM))
+    
+    # Random forest:
+    modRF<-randomForest(form1,data=metab[train,],ntree=1000)
+    predRF<-log(predict(modRF,newdata=metab[test,],type="prob"))
+    predRF[is.infinite(predRF)]<-log(1e-20)
+    mis2$misRF<-c(mis2$misRF,
+                  as.numeric(!predict(modRF,newdata=metab[test,],"class")==metab$group[test]))
+    mis2$ceRF<-c(mis2$ceRF,-1/nrow(mm1)*sum(mm1*predRF))
+  }
+  mis3<-lapply(mis2,mean)
+  resDf[j,names(mis3)]<-unlist(mis3)
+  print(j)
 }
-lapply(mis2,function(x) lapply(x,mean))
