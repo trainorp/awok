@@ -261,7 +261,8 @@ for(j in 1:nrow(resDf)){
   if(resDf$varSelect[j]!="lasso"){
     vars<-selDf[match(1:resDf$nMetab[j],selDf[,match(resDf$varSelect[j],names(selDf))]),]$id
   }else{
-    vars<-selDf$id[as.logical(selDf[,grepl("lasso",names(selDf)) & grepl(resDf$nMetab[j],names(selDf))])]
+    vars<-selDf$id[as.logical(selDf[,grepl("lasso",names(selDf)) & 
+                        resDf$nMetab[j]==gsub("lasso","",names(selDf))])]
   }
   form1<-as.formula(paste("group",paste(vars,collapse="+"),sep="~"))
   
