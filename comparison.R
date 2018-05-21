@@ -206,7 +206,7 @@ setwd("~/gdrive/AthroMetab/WoAC")
 load(file="compare.RData")
 
 ############ Selection ############
-selDf<-key[,names(key)%in%c("id","biochemical")]
+selDf<-key[,names(key)%in%c("id","biochemical","weights")]
 
 # RF importance:
 rF0Imp<-as.data.frame(importance(rF0,type="1"))
